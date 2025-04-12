@@ -1,0 +1,118 @@
+import pandas as pd
+
+# Step 1: Load the dataset
+file_path = r"C:\Users\pksso\Downloads\Indicators_of_Anxiety_or_Depression_Based_on_Reported_Frequency_of_Symptoms_During_Last_7_Days.csv"
+df = pd.read_csv(file_path)
+
+# Step 2: Strip whitespace from column names and string values
+df.columns = df.columns.str.strip()
+for col in df.select_dtypes(include='object'):
+    df[col] = df[col].str.strip()
+
+# Step 3: Fix inconsistent spellings in 'Phase' column
+df['Phase'] = df['Phase'].replace({
+    'Phase1': 'Phase 1',
+    'Phase 1 ': 'Phase 1',
+    'Phsae 1': 'Phase 1',
+    'Phase2': 'Phase 2',
+    'Phaase 2': 'Phase 2',
+    'phase 3': 'Phase 3',
+})
+
+# Step 4: Clean 'Confidence Interval' column if it exists
+if 'Confidence Interval' in df.columns:
+    df['Confidence Interval'] = df['Confidence Interval'].str.replace("–", "-", regex=False).str.replace("to", "-", regex=False)
+    df[['CI Lower', 'CI Upper']] = df['Confidence Interval'].str.extract(r'(\d+\.?\d*)\s*-\s*(\d+\.?\d*)')
+    df['CI Lower'] = pd.to_numeric(df['CI Lower'], errors='coerce')
+    df['CI Upper'] = pd.to_numeric(df['CI Upper'], errors='coerce')
+
+# Step 5: Clean 'Quartile Range' column if it exists
+if 'Quartile Range' in df.columns:
+    df['Quartile Range'] = df['Quartile Range'].str.replace("–", "-", regex=False).str.replace("to", "-", regex=False)
+    df[['QR Lower', 'QR Upper']] = df['Quartile Range'].str.extract(r'(\d+\.?\d*)\s*-\s*(\d+\.?\d*)')
+    df['QR Lower'] = pd.to_numeric(df['QR Lower'], errors='coerce')
+    df['QR Upper'] = pd.to_numeric(df['QR Upper'], errors='coerce')
+
+# Step 6: Fill missing values
+numeric_cols = df.select_dtypes(include='number').columns
+df[numeric_cols] = df[numeric_cols].fillna(df[numeric_cols].mean())
+df.fillna('Unknown', inplace=True)
+
+# Step 7: Drop duplicates
+df = df.drop_duplicates()
+
+# Step 8: Rename columns for clarity
+df.rename(columns={
+    'Indicator': 'Mental_Health_Indicator',
+    'Value': 'Reported_Value',
+    'Group': 'Demographic_Group'
+}, inplace=True)
+
+# Step 9: Save cleaned data
+df.to_csv("Cleaned_Anxiety_Depression_Data.csv", index=False)
+print("✅ Cleaned data saved as 'Cleaned_Anxiety_Depression_Data.csv'")
+import os
+print("📁 Cleaned file saved in:", os.getcwd())
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+
+# Load the cleaned data
+df = pd.read_csv("Cleaned_Anxiety_Depression_Data.csv")
+
+# -------------------------------
+# 1. Overall Trend of Mental Health Indicators
+# -------------------------------
+fig1 = px.line(df, 
+               x='Time Period', 
+               y='Reported_Value', 
+               color='Mental_Health_Indicator',
+               title='📈 Overall Trend of Mental Health Indicators Over Time')
+fig1.show()
+
+# -------------------------------
+# 2. Comparison Across Demographic Groups
+# -------------------------------
+fig2 = px.box(df, 
+              x='Demographic_Group', 
+              y='Reported_Value', 
+              color='Mental_Health_Indicator',
+              title='👥 Demographic Group vs Mental Health Reporting')
+fig2.show()
+
+# -------------------------------
+# 3. State-wise Distribution (Top 10)
+# -------------------------------
+top_states = df.groupby('State')['Reported_Value'].mean().nlargest(10).reset_index()
+
+fig3 = px.bar(top_states, 
+              x='State', 
+              y='Reported_Value',
+              title='📍Top 10 States by Reported Mental Health Values')
+fig3.show()
+
+# -------------------------------
+# 4. Gender-Based Differences
+# -------------------------------
+gender_df = df[df['Demographic_Group'].isin(['Male', 'Female'])]
+
+fig4 = px.histogram(gender_df,
+                    x='Reported_Value',
+                    color='Demographic_Group',
+                    nbins=30,
+                    barmode='overlay',
+                    title='🚻 Gender-Based Difference in Reported Mental Health')
+fig4.show()
+
+# -------------------------------
+# 5. Average Confidence Interval by Indicator
+# -------------------------------
+df['CI Mean'] = (df['CI Lower'] + df['CI Upper']) / 2
+ci_means = df.groupby('Mental_Health_Indicator')['CI Mean'].mean().reset_index()
+
+fig5 = px.bar(ci_means,
+              x='Mental_Health_Indicator',
+              y='CI Mean',
+              color='Mental_Health_Indicator',
+              title='🎯 Avg Confidence Interval by Mental Health Indicator')
+fig5.show()
